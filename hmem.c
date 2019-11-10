@@ -234,3 +234,8 @@ void hfree(void *item) {
 		assert(rv != -1);
 	}
 }
+
+// Reallocates the memory to have a new size.
+void* hrealloc(void* prev, size_t bytes) { 
+    return (void*)0xDEADBEEF;
+}

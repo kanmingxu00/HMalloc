@@ -9,4 +9,4 @@ $(BINS): $(SRCS)
 	gcc $(CFLAGS) -o $@ $@.c ../hmalloc.c
 
 clean:
-	rm -f $(BINS)
+	rm -f $(BINS) 
