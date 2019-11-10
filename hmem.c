@@ -214,6 +214,17 @@ hmalloc(size_t size) {
 	}
 }
 
+void free_help(free_list_node* free_block) {
+	if (free_block->size < 4096) {
+		coalesce_helper(free_block);
+	} else {
+		int pages = div_up(free_block->size, 4096);
+		stats.pages_unmapped += pages;
+		int rv = munmap((void*)free_block, free_block->size);
+		assert(rv != -1);
+	}
+}
+
 void hfree(void *item) {
 	stats.chunks_freed += 1;
 	void* temp_address = (void*) (item - sizeof(size_t));
@@ -225,17 +236,23 @@ void hfree(void *item) {
 	// leaving this in because important to realize that the structure
 	// comes in with prev and next already set.
 
-	if (free_block->size < 4096) {
-		coalesce_helper(free_block);
-	} else {
-		int pages = div_up(free_block->size, 4096);
-		stats.pages_unmapped += pages;
-		int rv = munmap((void*)free_block, free_block->size);
-		assert(rv != -1);
-	}
+	free_help(free_block);
 }
 
 // Reallocates the memory to have a new size.
 void* hrealloc(void* prev, size_t bytes) { 
-    return (void*)0xDEADBEEF;
+	stats.chunks_freed += 1;
+	stats.chunks_allocated += 1;
+	void* temp_address = (void*) (prev - sizeof(size_t));
+	free_list_node *free_block = (free_list_node*) temp_address;
+
+	if (free_block->size < bytes) {
+		free_help(free_block);
+		return hmalloc(bytes);
+	} else {
+		return prev;
+	}
+//	hfree(prev); this is just using free and hmalloc
+//    return hmalloc(bytes);
+
 }
