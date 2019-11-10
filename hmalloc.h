@@ -1,6 +1,8 @@
 #ifndef HMALLOC_H
 #define HMALLOC_H
 
+#include <stddef.h>
+
 // Husky Malloc Interface
 // cs3650 Starter Code
 
@@ -17,5 +19,6 @@ void hprintstats();
 
 void* hmalloc(size_t size);
 void hfree(void* item);
+void* hrealloc(void* prev, size_t bytes);
 
 #endif
