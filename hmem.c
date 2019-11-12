@@ -81,20 +81,22 @@ void coalesce_helper(free_list_node* node) {
 	node->next = 0;
 	if (free_list == 0) {
 		free_list = node;
-//		puts("peeing");
 //		printf("free_list: %ld", free_list_length());
 	} else {
 		free_list_node* temp = free_list;
 		while (temp != 0) {
 			if ((void*) temp > (void*) node) { // inserts after the current index
+//				puts("now");
 				if (temp->prev == 0 && temp->next == 0) {
 					node->next = temp;
 					temp->prev = node;
 					free_list = node;
+					free_list->prev = 0;
+					free_list->next = 0;
+//					puts("ho");
 				} else if (temp->prev != 0) {
 //					printf("size: %ld\n", sizeof(temp->prev));
 //					puts("kil me");
-					free_list_node* stupid = free_list;
 					if ((void*) temp->prev + temp->prev->size == (void*) node
 							&& (void*) node + node->size == (void*) temp) { // both sites touching
 
@@ -119,7 +121,7 @@ void coalesce_helper(free_list_node* node) {
 						node->prev = temp->prev;
 						node->next = temp;
 						temp->prev = node;
-						//					puts("here");
+//											puts("here");
 					}
 				} else if (temp->prev == 0) { // else if (temp->prev == 0) {
 //					node->next = free_list;
@@ -143,9 +145,8 @@ void*
 hmalloc(size_t size) {
 
 	pthread_mutex_lock(&mutex);
-	free_list_node* stupid = free_list;
 	stats.chunks_allocated += 1;
-	size += sizeof(size_t);
+	size += sizeof(free_list_node);
 //	if (free_list != 0) {
 ////		if (free_list->next == 0) {
 ////			puts("wow");
@@ -160,13 +161,19 @@ hmalloc(size_t size) {
 		while (temp != 0) { // finding where to put the thing
 			if (temp->size >= size) {
 				free_block = temp;
-				if (free_block->prev == 0) { // first element
-					free_list = free_list->next;
+//				if (temp->next == 0) {
+//					free_block->next = 0;
+//				} else {
+//					free_block->next = temp->next;
+//				}
+				if (temp->prev == 0) { // first element
+					free_list = temp->next;
 					if (free_list != 0) {
 						free_list->prev = 0; // this is the key
 					}
 					// delete first so can update with real size
 					// this is doing correctly on size debug
+
 //					printf("%ld", free_list->size);
 //					printf("%ld\n", size);
 				} else {
@@ -224,7 +231,7 @@ hmalloc(size_t size) {
 				PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 		assert(free_block != MAP_FAILED);
 		stats.pages_mapped += pages;
-		free_block->size = size;
+		free_block->size = pages * 4096;
 		pthread_mutex_unlock(&mutex);
 		return (void*) free_block + sizeof(size_t);
 	}
