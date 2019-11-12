@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <string.h>
+#include <pthread.h>
 
 #include "hmalloc.h"
 
@@ -30,7 +31,8 @@ typedef struct free_list_node {
 
 const size_t PAGE_SIZE = 4096;
 static hm_stats stats; // This initializes the stats to 0.
-static free_list_node *free_list;
+static free_list_node *free_list = 0;
+static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 long free_list_length() {
 	// TODO: Calculate the length of the free list.
@@ -75,6 +77,8 @@ static size_t div_up(size_t xx, size_t yy) {
 }
 
 void coalesce_helper(free_list_node* node) {
+	node->prev = 0;
+	node->next = 0;
 	if (free_list == 0) {
 		free_list = node;
 //		puts("peeing");
@@ -88,6 +92,9 @@ void coalesce_helper(free_list_node* node) {
 					temp->prev = node;
 					free_list = node;
 				} else if (temp->prev != 0) {
+//					printf("size: %ld\n", sizeof(temp->prev));
+//					puts("kil me");
+					free_list_node* stupid = free_list;
 					if ((void*) temp->prev + temp->prev->size == (void*) node
 							&& (void*) node + node->size == (void*) temp) { // both sites touching
 
@@ -118,6 +125,7 @@ void coalesce_helper(free_list_node* node) {
 //					node->next = free_list;
 					node->next = temp;
 					temp->prev = node;
+					node->prev = 0;
 //					puts("relative");
 					free_list = node;
 
@@ -133,6 +141,9 @@ void coalesce_helper(free_list_node* node) {
 
 void*
 hmalloc(size_t size) {
+
+	pthread_mutex_lock(&mutex);
+	free_list_node* stupid = free_list;
 	stats.chunks_allocated += 1;
 	size += sizeof(size_t);
 //	if (free_list != 0) {
@@ -159,9 +170,11 @@ hmalloc(size_t size) {
 //					printf("%ld", free_list->size);
 //					printf("%ld\n", size);
 				} else {
-					printf("%ld", size);
 					temp->prev->next = temp->next;
-					temp->next->prev = temp->prev; // get rid of node so
+					if (temp->next != 0) {
+						temp->next->prev = temp->prev;
+					}
+					// get rid of node so
 					// other nodes can fill it in during coalescing
 				}
 				break;
@@ -190,10 +203,11 @@ hmalloc(size_t size) {
 
 			void* temp_address = (void*)free_block + size;
 			free_list_node* remaining = (free_list_node*)temp_address;
+			remaining->prev = 0;
+			remaining->next = 0;
 			remaining->size = free_block->size - size;
 //			printf("%ld\n", remaining->size);
-//			remaining->prev = free_block->prev;
-//			remaining->next = free_block->next;
+
 //			printf("%ld", free_block->next);
 //			if (remaining == 0) {
 //			printf("%ld\n", remaining->size);
@@ -202,6 +216,7 @@ hmalloc(size_t size) {
 			free_block->size = size;
 		} // case for = individually not necessary -- node will just be 0 size
 
+		pthread_mutex_unlock(&mutex);
 		return (void*) free_block + sizeof(size_t);
 	} else {
 		int pages = div_up(size, 4096);
@@ -210,22 +225,13 @@ hmalloc(size_t size) {
 		assert(free_block != MAP_FAILED);
 		stats.pages_mapped += pages;
 		free_block->size = size;
+		pthread_mutex_unlock(&mutex);
 		return (void*) free_block + sizeof(size_t);
 	}
 }
 
-void free_help(free_list_node* free_block) {
-	if (free_block->size < 4096) {
-		coalesce_helper(free_block);
-	} else {
-		int pages = div_up(free_block->size, 4096);
-		stats.pages_unmapped += pages;
-		int rv = munmap((void*)free_block, free_block->size);
-		assert(rv != -1);
-	}
-}
-
 void hfree(void *item) {
+	pthread_mutex_lock(&mutex);
 	stats.chunks_freed += 1;
 	void* temp_address = (void*) (item - sizeof(size_t));
 	free_list_node *free_block = (free_list_node*) temp_address;
@@ -236,23 +242,24 @@ void hfree(void *item) {
 	// leaving this in because important to realize that the structure
 	// comes in with prev and next already set.
 
-	free_help(free_block);
+	if (free_block->size < 4096) {
+		free_block->next = 0;
+		free_block->prev = 0;
+		coalesce_helper(free_block);
+	} else {
+		int pages = div_up(free_block->size, 4096);
+		stats.pages_unmapped += pages;
+		int rv = munmap((void*)free_block, free_block->size);
+
+		assert(rv != -1);
+	}
+	pthread_mutex_unlock(&mutex);
 }
 
-// Reallocates the memory to have a new size.
-void* hrealloc(void* prev, size_t bytes) { 
-	stats.chunks_freed += 1;
-	stats.chunks_allocated += 1;
-	void* temp_address = (void*) (prev - sizeof(size_t));
-	free_list_node *free_block = (free_list_node*) temp_address;
-
-	if (free_block->size < bytes) {
-		free_help(free_block);
-		return hmalloc(bytes);
-	} else {
-		return prev;
-	}
-//	hfree(prev); this is just using free and hmalloc
-//    return hmalloc(bytes);
+void* hrealloc(void* prev, size_t bytes) {
+	void* temp = hmalloc(bytes);
+	memcpy(temp, prev, bytes);
+	hfree(prev);
+    return temp;
 
 }
