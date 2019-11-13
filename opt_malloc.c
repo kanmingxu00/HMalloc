@@ -20,6 +20,37 @@
 // preface: sorry it's so messy, leaving the notes in so i can see
 // my thought process during the challenge problem.
 
+// have pthread id
+// use this as index for access
+// how to ensure that we have {access} free lists?
+// per-thread arena:
+// - track the threads (and ids?) we have seen in a global variable)
+// - when a new thread is added, create an arena
+// - this arena contains a series of buckets (how od buckets work ????)
+// - these buckets contain memory which was allocated in this thread
+// - 1 arena per thread: lock ur thread when modifying the mutex
+// - if i see a free list node, how do i know which thread i am in?
+// - sol: give each node a pointer to its arena
+// - this allows the arena to be locked from any of the nodes of its free list
+
+
+// alternative:
+// - every node has its own lock.
+// - the nodes are only locked when modified,
+// - so locking isn't a big deal at all.
+
+// big q: how do we free across threads?
+// - return the memory allocated to that item to our thread's free list
+// - return the memory allocated to another thread's free list (this requires saving the thread in which it was created)
+
+// alternatively, implement strategy similar to fb allocator
+// this means allowing for arenas = 4x cpu cores
+// further, allocate many chunks instead of one at a time
+
+// how to coalesce across arenas? do we care?
+
+// arena: data structure
+
 // Free List Node
 // Your allocator should maintain a free list of available blocks of memory.
 // This should be a singly linked list sorted by block address.
@@ -28,6 +59,20 @@ typedef struct free_list_node {
 	struct free_list_node *prev;
 	struct free_list_node *next;
 } free_list_node;
+
+/* 
+ * Represents 
+ * */
+typedef struct arena {
+    int thread_id; // the thread id associated with this arena
+    pthread_mutex_t mutex; // lock for this arena
+    // if the thread id is not equal to the thread in the arena,
+    // (the thread accessing it is different from the thread that created it),
+    // there can be lock contention.
+    free_list_node *free_list;
+    // the free list elements within this arena.
+} arena;
+
 
 const size_t PAGE_SIZE = 4096;
 __thread hm_stats stats; // This initializes the stats to 0.
@@ -154,7 +199,7 @@ opt_malloc(size_t size) {
 //			free_list->size, size, stats.pages_mapped);
 //	}
 
-	if (size < 4096) {
+	if (size < PAGE_SIZE) {
 		free_list_node *temp = free_list;
 		free_list_node *free_block = 0;
 		while (temp != 0) { // finding where to put the thing
@@ -195,10 +240,10 @@ opt_malloc(size_t size) {
 //					printf("head_size: %ld, size: %ld, mapped: %ld\n",
 //						free_list->size, size, stats.pages_mapped);
 //				}
-			free_block = mmap(0, 4096, PROT_WRITE | PROT_READ,
+			free_block = mmap(0, PAGE_SIZE, PROT_WRITE | PROT_READ,
 					MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 			assert(free_block != MAP_FAILED);
-			free_block->size = 4096;
+			free_block->size = PAGE_SIZE;
 			stats.pages_mapped = stats.pages_mapped + 1;
 		} // proceed to fill in free list
 //		else {
@@ -222,9 +267,8 @@ opt_malloc(size_t size) {
 			free_block->size = size;
 		} // case for = individually not necessary -- node will just be 0 size
 		return (void*) free_block + sizeof(size_t);
-	} else {
-		int pages = div_up(size, 4096);
-		free_list_node *free_block = mmap(0, pages * 4096,
+    } else {int pages = div_up(size, PAGE_SIZE);
+		free_list_node *free_block = mmap(0, pages * PAGE_SIZE,
 				PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 		assert(free_block != MAP_FAILED);
 		stats.pages_mapped += pages;
@@ -244,12 +288,12 @@ void opt_free(void *item) {
 	// leaving this in because important to realize that the structure
 	// comes in with prev and next already set.
 
-	if (free_block->size < 4096) {
+	if (free_block->size < PAGE_SIZE) {
 		free_block->next = 0;
 		free_block->prev = 0;
 		coalesce_helper(free_block);
 	} else {
-		int pages = div_up(free_block->size, 4096);
+		int pages = div_up(free_block->size, PAGE_SIZE);
 		stats.pages_unmapped += pages;
 		int rv = munmap((void*)free_block, free_block->size);
 
