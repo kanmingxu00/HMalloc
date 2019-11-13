@@ -33,7 +33,7 @@ collatz-ivec-par: ivec_main.o par_malloc.o opt_malloc.o
 %.o : %.c $(HDRS) Makefile
 
 clean:
-	rm -f *.o $(BINS) time.tmp outp.tmp && cd tests && make clean
+	rm -f *.o $(BINS) time.tmp outp.tmp
 
 test:
 	perl test.pl
