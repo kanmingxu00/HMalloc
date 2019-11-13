@@ -4,27 +4,24 @@
 #include <unistd.h>
 
 #include "xmalloc.h"
-#include "hmalloc.h"
+#include "opt_malloc.h"
 
 
 void*
 xmalloc(size_t bytes)
 {
-    //return opt_malloc(bytes);
-    return hmalloc(bytes);
+    return opt_malloc(bytes);
 }
 
 void
 xfree(void* ptr)
 {
-    //opt_free(ptr);
-	hfree(ptr);
+    opt_free(ptr);
 }
 
 void*
 xrealloc(void* prev, size_t bytes)
 {
-    //return opt_realloc(prev, bytes);
-	return hrealloc(prev, bytes);
+    return opt_realloc(prev, bytes);
 }
 

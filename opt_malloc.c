@@ -5,7 +5,7 @@
 #include <string.h>
 #include <pthread.h>
 
-#include "hmalloc.h"
+#include "opt_malloc.h"
 
 /*
  typedef struct hm_stats {
@@ -30,9 +30,9 @@ typedef struct free_list_node {
 } free_list_node;
 
 const size_t PAGE_SIZE = 4096;
-static hm_stats stats; // This initializes the stats to 0.
-static free_list_node *free_list = 0;
-static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+__thread hm_stats stats; // This initializes the stats to 0.
+__thread free_list_node *free_list = 0;
+__thread pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 long free_list_length() {
 	// TODO: Calculate the length of the free list.
@@ -47,12 +47,12 @@ long free_list_length() {
 }
 
 hm_stats*
-hgetstats() {
+opt_getstats() {
 	stats.free_length = free_list_length();
 	return &stats;
 }
 
-void hprintstats() {
+void opt_printstats() {
 //	printf("head size: %ld", free_list->size);
 //	puts("Here");
 	stats.free_length = free_list_length();
@@ -63,6 +63,7 @@ void hprintstats() {
 	fprintf(stderr, "Frees:    %ld\n", stats.chunks_freed);
 	fprintf(stderr, "Freelen:  %ld\n", stats.free_length);
 }
+
 
 static size_t div_up(size_t xx, size_t yy) {
 	// This is useful to calculate # of pages
@@ -142,11 +143,9 @@ void coalesce_helper(free_list_node* node) {
 }
 
 void*
-hmalloc(size_t size) {
-	int ret = pthread_mutex_lock(&mutex);
-	assert(ret != -1);
+opt_malloc(size_t size) {
 	stats.chunks_allocated += 1;
-	size += sizeof(free_list_node);
+	size += sizeof(size_t);
 //	if (free_list != 0) {
 ////		if (free_list->next == 0) {
 ////			puts("wow");
@@ -222,9 +221,6 @@ hmalloc(size_t size) {
 			coalesce_helper(remaining); // this inserts to FL while coalescing
 			free_block->size = size;
 		} // case for = individually not necessary -- node will just be 0 size
-
-		ret = pthread_mutex_unlock(&mutex);
-		assert(ret != -1);
 		return (void*) free_block + sizeof(size_t);
 	} else {
 		int pages = div_up(size, 4096);
@@ -233,15 +229,11 @@ hmalloc(size_t size) {
 		assert(free_block != MAP_FAILED);
 		stats.pages_mapped += pages;
 		free_block->size = pages * 4096;
-		ret = pthread_mutex_unlock(&mutex);
-		assert(ret != -1);
 		return (void*) free_block + sizeof(size_t);
 	}
 }
 
-void hfree(void *item) {
-	int ret = pthread_mutex_lock(&mutex);
-	assert(ret != -1);
+void opt_free(void *item) {
 	stats.chunks_freed += 1;
 	void* temp_address = (void*) (item - sizeof(size_t));
 	free_list_node *free_block = (free_list_node*) temp_address;
@@ -263,14 +255,12 @@ void hfree(void *item) {
 
 		assert(rv != -1);
 	}
-	ret = pthread_mutex_unlock(&mutex);
-	assert(ret != -1);
 }
 
-void* hrealloc(void* prev, size_t bytes) {
-	void* temp = hmalloc(bytes);
+void* opt_realloc(void* prev, size_t bytes) {
+	void* temp = opt_malloc(bytes);
 	memcpy(temp, prev, bytes);
-	hfree(prev);
+	opt_free(prev);
     return temp;
 
 }
