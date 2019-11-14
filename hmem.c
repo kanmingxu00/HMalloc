@@ -143,6 +143,7 @@ void coalesce_helper(free_list_node* node) {
 
 void*
 hmalloc(size_t size) {
+	printf("%ld\n", pthread_self());
 	int ret = pthread_mutex_lock(&mutex);
 	assert(ret != -1);
 	stats.chunks_allocated += 1;
