@@ -305,7 +305,8 @@ void opt_free(void *item) {
 	// commenting these out fix my free issue
 	// leaving this in because important to realize that the structure
 	// comes in with prev and next already set.
-	pthread_mutex_lock(&mutexs[free_block->thread_id]);
+	int thread_id = free_block->thread_id;
+	pthread_mutex_lock(&mutexs[thread_id]);
 
 	if (free_block->size < PAGE_SIZE) {
 		free_block->next = 0;
@@ -317,7 +318,7 @@ void opt_free(void *item) {
 		int rv = munmap((void*)free_block, free_block->size);
 		assert(rv != -1);
 	}
-	pthread_mutex_unlock(&mutexs[free_block->thread_id]);
+	pthread_mutex_unlock(&mutexs[thread_id]);
 }
 
 void* opt_realloc(void* prev, size_t bytes) {
