@@ -317,7 +317,7 @@ void opt_free(void *item) {
 		int rv = munmap((void*)free_block, free_block->size);
 		assert(rv != -1);
 	}
-	pthread_mutex_unlock(&mutexs[thread_id]);
+	pthread_mutex_unlock(&mutexs[free_block->thread_id]);
 }
 
 void* opt_realloc(void* prev, size_t bytes) {
