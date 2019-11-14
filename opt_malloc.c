@@ -144,6 +144,7 @@ void coalesce_helper(free_list_node* node) {
 
 void*
 opt_malloc(size_t size) {
+	long id = pthread_self();
 	stats.chunks_allocated += 1;
 	size += sizeof(size_t);
 //	if (free_list != 0) {
