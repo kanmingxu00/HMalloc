@@ -85,7 +85,7 @@ void free_list_length() {
 			temp = temp->next;
 			length += 1;
 		}
-		printf("%ld", length);
+    printf("%ld", length);
 	}
 	// use free_list here and just free everything in that
 }
@@ -203,7 +203,7 @@ void*
 opt_malloc(size_t size) {
 	long id = pthread_self();
 	int thread_id = thread_get(id);
-	printf("%d", thread_id);
+// printf("%d", thread_id);
 	pthread_mutex_lock(&mutexs[thread_id]);
 
 	stats.chunks_allocated += 1;
