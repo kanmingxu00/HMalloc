@@ -201,8 +201,7 @@ thread_get(long id) {
 
 void*
 opt_malloc(size_t size) {
-	long id = pthread_self();
-	int thread_id = thread_get(id);
+	int thread_id = thread_get(pthread_self());
 	pthread_mutex_lock(&mutexs[thread_id]);
 
 	stats.chunks_allocated += 1;
@@ -297,9 +296,6 @@ opt_malloc(size_t size) {
 }
 
 void opt_free(void *item) {
-
-
-
 	stats.chunks_freed += 1;
 	void* temp_address = (void*) (item - 12);
 	free_list_node *free_block = (free_list_node*) temp_address;
@@ -309,8 +305,7 @@ void opt_free(void *item) {
 	// commenting these out fix my free issue
 	// leaving this in because important to realize that the structure
 	// comes in with prev and next already set.
-	int thread_id = free_block->thread_id;
-	pthread_mutex_lock(&mutexs[thread_id]);
+	pthread_mutex_lock(&mutexs[free_block->thread_id]);
 
 	if (free_block->size < PAGE_SIZE) {
 		free_block->next = 0;
@@ -320,7 +315,6 @@ void opt_free(void *item) {
 		int pages = div_up(free_block->size, PAGE_SIZE);
 		stats.pages_unmapped += pages;
 		int rv = munmap((void*)free_block, free_block->size);
-
 		assert(rv != -1);
 	}
 	pthread_mutex_unlock(&mutexs[thread_id]);
