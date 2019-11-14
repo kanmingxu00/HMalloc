@@ -140,6 +140,7 @@ static size_t div_up(size_t xx, size_t yy) {
 void coalesce_helper(free_list_node* node, int thread_id) {
 	node->prev = 0;
 	node->next = 0;
+	pthread_mutex_lock(&mutexs[thread_id]);
 	if (free_lists[thread_id] == 0) {
 		free_lists[thread_id] = node;
 //		printf("free_list: %ld", free_list_length());
@@ -199,6 +200,7 @@ void coalesce_helper(free_list_node* node, int thread_id) {
 			temp = temp->next;
 		}
 	}
+	pthread_mutex_unlock(&mutexs[thread_id]);
 //	printf("%ld", free_list->size);
 }
 
@@ -223,7 +225,7 @@ thread_get(long id) {
 void*
 opt_malloc(size_t size) {
 	int thread_id = thread_get(pthread_self());
-	pthread_mutex_lock(&mutexs[thread_id]);
+
 
 	stats.chunks_allocated += 1;
 	size += 12;
@@ -236,6 +238,7 @@ opt_malloc(size_t size) {
 //	}
 
 	if (size < PAGE_SIZE) {
+		pthread_mutex_lock(&mutexs[thread_id]);
 		free_list_node *temp = free_lists[thread_id];
 		free_list_node *free_block = 0;
 		while (temp != 0) { // finding where to put the thing
@@ -264,11 +267,13 @@ opt_malloc(size_t size) {
 					// get rid of node so
 					// other nodes can fill it in during coalescing
 				}
+				pthread_mutex_unlock(&mutexs[thread_id]);
 				break;
 			}
 			temp = temp->next;
 		}
 		if (free_block == 0) { // not found free block big enough
+			pthread_mutex_unlock(&mutexs[thread_id]);
 //			if (free_list != 0) {
 //			//		if (free_list->next == 0) {
 //			//			puts("wow");
@@ -303,7 +308,6 @@ opt_malloc(size_t size) {
 			free_block->size = size;
 		} // case for = individually not necessary -- node will just be 0 size
 		free_block->thread_id = thread_id;
-		pthread_mutex_unlock(&mutexs[thread_id]);
 		return (void*) free_block + 12;
     } else {int pages = div_up(size, PAGE_SIZE);
 		free_list_node *free_block = mmap(0, pages * PAGE_SIZE,
@@ -311,7 +315,6 @@ opt_malloc(size_t size) {
 		assert(free_block != MAP_FAILED);
 		stats.pages_mapped += pages;
 		free_block->size = pages * 4096;
-		pthread_mutex_unlock(&mutexs[thread_id]);
 		return (void*) free_block + 12;
 	}
 }
@@ -327,7 +330,6 @@ void opt_free(void *item) {
 	// leaving this in because important to realize that the structure
 	// comes in with prev and next already set.
 	int thread_id = free_block->thread_id;
-	pthread_mutex_lock(&mutexs[thread_id]);
 
 	if (free_block->size < PAGE_SIZE) {
 		free_block->next = 0;
@@ -339,7 +341,6 @@ void opt_free(void *item) {
 		int rv = munmap((void*)free_block, free_block->size);
 		assert(rv != -1);
 	}
-	pthread_mutex_unlock(&mutexs[thread_id]);
 }
 
 void* opt_realloc(void* prev, size_t bytes) {
