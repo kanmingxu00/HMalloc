@@ -87,42 +87,6 @@ static free_list_node* free_lists[64] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 		0, 0, 0, 0, 0, 0, 0, 0, 0};
 
-//
-//void free_list_length() {
-//	// TODO: Calculate the length of the free list.
-//
-//
-//	for (int ii = 0; ii < 5; ++ii) {
-//		long length = 0;
-//		free_list_node* temp = free_lists[ii];
-//		while (temp != 0) {
-//			temp = temp->next;
-//			length += 1;
-//		}
-//    printf("%ld", length);
-//	}
-//	// use free_list here and just free everything in that
-//}
-//
-//hm_stats*
-//opt_getstats() {
-////	stats.free_length = free_list_length();
-//	return &stats;
-//}
-//
-//void opt_printstats() {
-////	printf("head size: %ld", free_list->size);
-////	puts("Here");
-////	stats.free_length = free_list_length();
-//	fprintf(stderr, "\n== husky malloc stats ==\n");
-//	fprintf(stderr, "Mapped:   %ld\n", stats.pages_mapped);
-//	fprintf(stderr, "Unmapped: %ld\n", stats.pages_unmapped);
-//	fprintf(stderr, "Allocs:   %ld\n", stats.chunks_allocated);
-//	fprintf(stderr, "Frees:    %ld\n", stats.chunks_freed);
-//	fprintf(stderr, "Freelen:  %ld\n", stats.free_length);
-//}
-
-
 static size_t div_up(size_t xx, size_t yy) {
 	// This is useful to calculate # of pages
 	// for large allocations.
@@ -140,22 +104,17 @@ void coalesce_helper(free_list_node* node, int thread_id) {
 	node->next = 0;
 	if (free_lists[thread_id] == 0) {
 		free_lists[thread_id] = node;
-//		printf("free_list: %ld", free_list_length());
 	} else {
 		free_list_node* temp = free_lists[thread_id];
 		while (temp != 0) {
-			if ((void*) temp > (void*) node) { // inserts after the current index
-//				puts("now");
+			if ((void*) temp > (void*) node) {
 				if (temp->prev == 0 && temp->next == 0) {
 					node->next = temp;
 					temp->prev = node;
 					free_lists[thread_id] = node;
 					free_lists[thread_id]->prev = 0;
 					free_lists[thread_id]->next = 0;
-//					puts("ho");
 				} else if (temp->prev != 0) {
-//					printf("size: %ld\n", sizeof(temp->prev));
-//					puts("kil me");
 					if ((void*) temp->prev + temp->prev->size == (void*) node
 							&& (void*) node + node->size == (void*) temp) { // both sites touching
 
@@ -170,26 +129,20 @@ void coalesce_helper(free_list_node* node, int thread_id) {
 						temp->prev->size = temp->prev->size + node->size;
 					} else if ((void*) node + node->size == (void*) temp) { // node is before the current temp
 						node->size = node->size + temp->size;
-//						if (temp->prev != 0) { // if temp isn't the head
 						temp->prev->next = node;
-						node->prev = temp->prev; // remove temp effectively
-//						}
+						node->prev = temp->prev;
 						node->next = temp->next;
 					} else { // tempprev, node, temp
 						temp->prev->next = node;
 						node->prev = temp->prev;
 						node->next = temp;
 						temp->prev = node;
-//											puts("here");
 					}
-				} else if (temp->prev == 0) { // else if (temp->prev == 0) {
-//					node->next = free_list;
+				} else if (temp->prev == 0) {
 					node->next = temp;
 					temp->prev = node;
 					node->prev = 0;
-//					puts("relative");
 					free_lists[thread_id] = node;
-
 				}
 
 				break;
@@ -197,12 +150,11 @@ void coalesce_helper(free_list_node* node, int thread_id) {
 			temp = temp->next;
 		}
 	}
-//	printf("%ld", free_list->size);
 }
 
 int
 thread_get(long id) {
-	for (int ii = 0; ii < 5; ++ii) {
+	for (int ii = 0; ii < 64; ++ii) {
 		if (ids[ii] == 0) {
 			ids[ii] = id;
 			return ii;
@@ -218,86 +170,45 @@ thread_get(long id) {
 
 void*
 opt_malloc(size_t size) {
-
 	int thread_id = 2 * thread_get(pthread_self());
-	pthread_mutex_lock(&mutexs[thread_id]);
-
-
-//	stats.chunks_allocated += 1;
 	size += 12;
-//	if (free_list != 0) {
-////		if (free_list->next == 0) {
-////			puts("wow");
-////		}
-//		printf("head_size: %ld, size: %ld, mapped: %ld\n",
-//			free_list->size, size, stats.pages_mapped);
-//	}
-
 	if (size < PAGE_SIZE) {
+		pthread_mutex_lock(&mutexs[thread_id]);
 		free_list_node *temp = free_lists[thread_id];
 		free_list_node *free_block = 0;
 		while (temp != 0) { // finding where to put the thing
 			if (temp->size >= size) {
 				free_block = temp;
-//				if (temp->next == 0) {
-//					free_block->next = 0;
-//				} else {
-//					free_block->next = temp->next;
-//				}
 				if (temp->prev == 0) { // first element
 					free_lists[thread_id] = temp->next;
 					if (free_lists[thread_id] != 0) {
-						free_lists[thread_id]->prev = 0; // this is the key
+						free_lists[thread_id]->prev = 0;
 					}
-					// delete first so can update with real size
-					// this is doing correctly on size debug
-
-//					printf("%ld", free_list->size);
-//					printf("%ld\n", size);
 				} else {
 					temp->prev->next = temp->next;
 					if (temp->next != 0) {
 						temp->next->prev = temp->prev;
 					}
-					// get rid of node so
-					// other nodes can fill it in during coalescing
 				}
 				break;
 			}
 			temp = temp->next;
 		}
-		if (free_block == 0) { // not found free block big enough
-//			if (free_list != 0) {
-//			//		if (free_list->next == 0) {
-//			//			puts("wow");
-//			//		}
-//					printf("head_size: %ld, size: %ld, mapped: %ld\n",
-//						free_list->size, size, stats.pages_mapped);
-//				}
+		if (free_block == 0) {
 			free_block = mmap(0, PAGE_SIZE, PROT_WRITE | PROT_READ,
 					MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 			assert(free_block != MAP_FAILED);
 			free_block->size = PAGE_SIZE;
-		} // proceed to fill in free list
-//		else {
-//			printf("free_block size: %ld", free_block->size);
-//			printf("length: %ld", free_list_length());
-//		}
+		}
 		if (free_block->size > size + sizeof(free_list_node)) {
-
 			void* temp_address = (void*)free_block + size;
 			free_list_node* remaining = (free_list_node*)temp_address;
 			remaining->prev = 0;
 			remaining->next = 0;
 			remaining->size = free_block->size - size;
-//			printf("%ld\n", remaining->size);
-//			printf("%ld", free_block->next);
-//			if (remaining == 0) {
-//			printf("%ld\n", remaining->size);
-//			}
 			coalesce_helper(remaining, thread_id); // this inserts to FL while coalescing
 			free_block->size = size;
-		} // case for = individually not necessary -- node will just be 0 size
+		}
 		free_block->thread_id = thread_id;
 		pthread_mutex_unlock(&mutexs[thread_id]);
 		return (void*) free_block + 12;
@@ -306,7 +217,6 @@ opt_malloc(size_t size) {
 				PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 		assert(free_block != MAP_FAILED);
 		free_block->size = pages * 4096;
-		pthread_mutex_unlock(&mutexs[thread_id]);
 		return (void*) free_block + 12;
 	}
 }
@@ -322,12 +232,13 @@ void opt_free(void *item) {
 		free_block->next = 0;
 		free_block->prev = 0;
 		coalesce_helper(free_block, thread_id);
+		pthread_mutex_unlock(&mutexs[thread_id]);
 	} else {
+		pthread_mutex_unlock(&mutexs[thread_id]);
 		int pages = div_up(free_block->size, PAGE_SIZE);
 		int rv = munmap((void*)free_block, pages*PAGE_SIZE);
 		assert(rv != -1);
 	}
-	pthread_mutex_unlock(&mutexs[thread_id]);
 }
 
 void* opt_realloc(void* prev, size_t bytes) {
