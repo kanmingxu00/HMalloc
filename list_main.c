@@ -161,7 +161,6 @@ main(int argc, char* argv[])
         free_list(tasks[ii]->vals);
         xfree(tasks[ii]);
     }
-
     xfree(tasks);
 
     return 0;
