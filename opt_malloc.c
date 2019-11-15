@@ -63,50 +63,12 @@ typedef struct free_list_node {
 
 
 const size_t PAGE_SIZE = 4096;
-__thread hm_stats stats; // This initializes the stats to 0.
 
 __thread pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 static long ids[5] = {0, 0, 0, 0, 0};
 static pthread_mutex_t mutexs[5] = {PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER
 		, PTHREAD_MUTEX_INITIALIZER,PTHREAD_MUTEX_INITIALIZER};
 static free_list_node* free_lists[5] = {0, 0, 0, 0, 0};
-static int full = 0;
-static int called = 0;
-
-
-void free_list_length() {
-	// TODO: Calculate the length of the free list.
-
-
-	for (int ii = 0; ii < 5; ++ii) {
-		long length = 0;
-		free_list_node* temp = free_lists[ii];
-		while (temp != 0) {
-			temp = temp->next;
-			length += 1;
-		}
-    printf("%ld", length);
-	}
-	// use free_list here and just free everything in that
-}
-
-hm_stats*
-opt_getstats() {
-//	stats.free_length = free_list_length();
-	return &stats;
-}
-
-void opt_printstats() {
-//	printf("head size: %ld", free_list->size);
-//	puts("Here");
-//	stats.free_length = free_list_length();
-	fprintf(stderr, "\n== husky malloc stats ==\n");
-	fprintf(stderr, "Mapped:   %ld\n", stats.pages_mapped);
-	fprintf(stderr, "Unmapped: %ld\n", stats.pages_unmapped);
-	fprintf(stderr, "Allocs:   %ld\n", stats.chunks_allocated);
-	fprintf(stderr, "Frees:    %ld\n", stats.chunks_freed);
-	fprintf(stderr, "Freelen:  %ld\n", stats.free_length);
-}
 
 
 static size_t div_up(size_t xx, size_t yy) {
@@ -204,7 +166,6 @@ opt_malloc(size_t size) {
 	int thread_id = thread_get(pthread_self());
 	pthread_mutex_lock(&mutexs[thread_id]);
 
-	stats.chunks_allocated += 1;
 	size += 12;
 //	if (free_list != 0) {
 ////		if (free_list->next == 0) {
@@ -259,7 +220,6 @@ opt_malloc(size_t size) {
 					MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 			assert(free_block != MAP_FAILED);
 			free_block->size = PAGE_SIZE;
-			stats.pages_mapped = stats.pages_mapped + 1;
 		} // proceed to fill in free list
 //		else {
 //			printf("free_block size: %ld", free_block->size);
@@ -288,7 +248,6 @@ opt_malloc(size_t size) {
 		free_list_node *free_block = mmap(0, pages * PAGE_SIZE,
 				PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 		assert(free_block != MAP_FAILED);
-		stats.pages_mapped += pages;
 		free_block->size = pages * 4096;
 		pthread_mutex_unlock(&mutexs[thread_id]);
 		return (void*) free_block + 12;
@@ -296,7 +255,6 @@ opt_malloc(size_t size) {
 }
 
 void opt_free(void *item) {
-	stats.chunks_freed += 1;
 	void* temp_address = (void*) (item - 12);
 	free_list_node *free_block = (free_list_node*) temp_address;
 //	printf("%ld: %ld\n", stats.chunks_freed, free_block->size); // why failing on 184?
@@ -314,7 +272,6 @@ void opt_free(void *item) {
 		coalesce_helper(free_block, thread_id);
 	} else {
 		int pages = div_up(free_block->size, PAGE_SIZE);
-		stats.pages_unmapped += pages;
 		int rv = munmap((void*)free_block, free_block->size);
 		assert(rv != -1);
 	}
@@ -326,5 +283,4 @@ void* opt_realloc(void* prev, size_t bytes) {
 	memcpy(temp, prev, bytes);
 	opt_free(prev);
     return temp;
-
 }
