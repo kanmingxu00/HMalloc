@@ -1,59 +1,11 @@
 #include <stdlib.h>
 #include <sys/mman.h>
-#include <stdio.h>
 #include <assert.h>
 #include <string.h>
 #include <pthread.h>
 
 #include "opt_malloc.h"
 
-/*
- typedef struct hm_stats {
- long pages_mapped;
- long pages_unmapped;
- long chunks_allocated;
- long chunks_freed;
- long free_length;
- } hm_stats;
- */
-
-// preface: sorry it's so messy, leaving the notes in so i can see
-// my thought process during the challenge problem.
-
-// have pthread id
-// use this as index for access
-// how to ensure that we have {access} free lists?
-// per-thread arena:
-// - track the threads (and ids?) we have seen in a global variable)
-// - when a new thread is added, create an arena
-// - this arena contains a series of buckets (how od buckets work ????)
-// - these buckets contain memory which was allocated in this thread
-// - 1 arena per thread: lock ur thread when modifying the mutex
-// - if i see a free list node, how do i know which thread i am in?
-// - sol: give each node a pointer to its arena
-// - this allows the arena to be locked from any of the nodes of its free list
-
-
-// alternative:
-// - every node has its own lock.
-// - the nodes are only locked when modified,
-// - so locking isn't a big deal at all.
-
-// big q: how do we free across threads?
-// - return the memory allocated to that item to our thread's free list
-// - return the memory allocated to another thread's free list (this requires saving the thread in which it was created)
-
-// alternatively, implement strategy similar to fb allocator
-// this means allowing for arenas = 4x cpu cores
-// further, allocate many chunks instead of one at a time
-
-// how to coalesce across arenas? do we care?
-
-// arena: data structure
-
-// Free List Node
-// Your allocator should maintain a free list of available blocks of memory.
-// This should be a singly linked list sorted by block address.
 typedef struct free_list_node {
 	size_t size;
 	int thread_id;
@@ -63,9 +15,6 @@ typedef struct free_list_node {
 
 
 const size_t PAGE_SIZE = 20480;
-//__thread hm_stats stats; // This initializes the stats to 0.
-
-//__thread pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 static long ids[64] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 		0, 0, 0, 0, 0, 0, 0, 0, 0}; // can handle 64 threads, and would be able to handle more if more were added
@@ -165,9 +114,6 @@ thread_get(long id) {
 	assert(0);
 }
 
-
-
-
 void*
 opt_malloc(size_t size) {
 	int thread_id = 2 * thread_get(pthread_self());
@@ -246,6 +192,5 @@ void* opt_realloc(void* prev, size_t bytes) {
 	memcpy(temp, prev, bytes);
 	opt_free(prev);
     return temp;
-
 }
 
