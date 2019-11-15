@@ -1,0 +1,83 @@
+My System
+OS: Arch Linux (Code Running in Debian 10 VirtualBox VM)
+Processor: Intel Core i7-8550U
+Processor Cores: 4 (8 threads) (4 cores given to VM)
+RAM: 16GB
+
+CCIS Server:
+OS: CentOS 7.6.1810
+Processor: Intel Xeon Gold 5118
+Processor Cores: 48 (96 threads)
+
+Each program run with argument of 10,000
+--------------------------------------------------
+Algo | Test | trial 1 | trial 2 | trial 3 | median
+--------------------------------------------------
+sys  | ivec | 0.042   | 0.05    | 0.046   | 0.046
+hw7  | ivec | 0.285   | 0.298   | 0.262   | 0.285
+par  | ivec | 0.222   | 0.201   | 0.181   | 0.201
+--------------------------------------------------
+sys  | list | 0.151   | 0.155   | 0.146   | 0.347
+hw7  | list | 0.61    | 0.487   | 0.623   | 0.61
+par  | list | 0.307   | 0.314   | 0.313   | 0.313
+--------------------------------------------------
+
+Strategy: 
+To create a faster allocator, we realized that we had two problems. 
+One problem is the issue of locking and conflicts; when a conflict
+occurs with locking, the system will run much more slowly than the
+other. The second problem is one of freeing across threads. Without
+running into these constant locking conflicts, and avoiding causing
+race conditions with code, how do we ensure that we are able to 
+free across threads (freeing data in one thread that was 'malloc'd'
+in another')? 
+
+Our solution to this was as follows - every time we malloc to create
+an element, we assign the id of our thread to both the element we 
+give back to the user and the free list element we store indicating
+the extra space after a call to mmap made through making space for 
+that element for the user. We then add the free list element to an 
+array index associated with the id of the thread. This way, when the 
+user would like to malloc again, we can use their thread id to 
+determine which category to look in to access the data that we have 
+freed before. Further, when we choose to free an element, we know 
+exactly which bucket has the free list element(s) corresponding to 
+the excess memory associated with the item to free. This means that
+though we have many bins to place data in, when we return the data to
+the free list, we always return it to the same free list that the 
+rest of the page potentially resides in - ensuring that we do not 
+splice pages across multiple bins and guaranteeing that we can 
+coalesce entire pages back together. As it is most common for malloc 
+and free to be called in the same thread, we figured that optimizing
+this case was ideal for performance. When freeing data in another 
+thread from which the data has been malloc'd, the data knows which 
+thread it was malloc'd in even though we are in a different thread, 
+so the data is freed to the same free list the rest of its page 
+exists in. It is notable that this is a worst case scenario, as it 
+has the potential to lock other threads out of returning to this 
+bin, but as data is primarily allocated and freed in the same bin
+and we ensure this, in most cases this saves a lot of time. 
+Further, even when a thread is freeing an element from a 
+different thread than it was allocated in, it is unlikely that 
+the thread that allocated the element will still be actively
+reading to and writing from its free list - after all, if the data is
+passed from one thread to another, based on our programming 
+experience in C thus far we have concluded that this means that 
+it's likely the first thread has closed while the second
+thread has opened, and this turns out to be the case for many C 
+programs. In short: we associate an identifier with both 
+malloc'd elements and free list elements based on our initial 
+thread id. A bin is then dedicated to elements associated with 
+this thread id. Therefore, after some initial creation of
+threads and elements, future elements continue to utilize the free 
+lists associated with the elements at hand according to the 
+threads they use. 
+
+Results:
+We appear to consistently best hw7 on both ivec and list tests. This 
+makes sense, as our use of multithread-capable free lists is far 
+more opimal and leads to much less locking than the naive 
+implementation from the previous homework assignment with this 
+parallel code. However, we are unable to best the results of the 
+system, even though our data indicates that we do get fairly
+close to the system time. 
